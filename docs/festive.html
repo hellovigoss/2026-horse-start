@@ -563,7 +563,7 @@
             for (let i = 1; i <= TOTAL_NODES; i++) {
                 const node = document.createElement('div');
                 node.className = 'node waiting';
-                node.id = `node-${i.toString().padStart(3, '0')}`;
+                node.id = `node-${i.toString().padStart(2, '0')}`;
                 node.innerHTML = `
                     <div class="node-id">第 ${i} 位</div>
                     <div class="node-status">🧧 待报到</div>
@@ -623,7 +623,7 @@
             
             // 更新节点状态
             for (let i = 1; i <= TOTAL_NODES; i++) {
-                const key = i.toString().padStart(3, '0');
+                const key = i.toString().padStart(2, '0');
                 const nodeData = data.nodes[key];
                 const element = document.getElementById(`node-${key}`);
                 
