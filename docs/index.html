@@ -305,9 +305,9 @@
             for (let i = 1; i <= TOTAL_NODES; i++) {
                 const node = document.createElement('div');
                 node.className = 'node offline';
-                node.id = `node-${i.toString().padStart(3, '0')}`;
+                node.id = `node-${i.toString().padStart(2, '0')}`;
                 node.innerHTML = `
-                    <div class="node-id">NODE ${i.toString().padStart(3, '0')}</div>
+                    <div class="node-id">NODE ${i.toString().padStart(2, '0')}</div>
                     <div class="node-status">OFFLINE</div>
                     <div class="node-author"></div>
                 `;
@@ -356,7 +356,7 @@
             document.getElementById('progress').textContent = `${Math.round(progress)}%`;
             
             for (let i = 1; i <= TOTAL_NODES; i++) {
-                const key = i.toString().padStart(3, '0');
+                const key = i.toString().padStart(2, '0');
                 const nodeData = data.nodes[key];
                 const element = document.getElementById(`node-${key}`);
                 
