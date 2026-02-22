@@ -21,97 +21,85 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
         with:
-          fetch-depth: 0  # 关键：拉取完整 git 历史，否则 git log 可能失效
+          fetch-depth: 0  # 需要完整历史计算时间
 
-      - name: Generate Status (Debug)
+      - name: Generate Status
         run: |
           mkdir -p _site
           
+          # 使用 Python 生成状态 JSON
           python3 << 'PYTHON'
           import os
           import json
           import subprocess
+          import re
           from datetime import datetime
 
-          print("=== DEBUG: 开始扫描 ===")
-          print(f"当前目录: {os.getcwd()}")
-          print(f"目录内容: {os.listdir('.')}")
-          
+          # 动态扫描 start 目录中的 md 文件
+          def get_md_files():
+              md_files = []
+              if os.path.exists('start'):
+                  for f in sorted(os.listdir('start')):
+                      if f.endswith('.md'):
+                          # 提取文件名中的数字部分作为节点ID
+                          match = re.match(r'(\d+)\.md', f)
+                          if match:
+                              md_files.append((match.group(1), f"start/{f}"))
+              return md_files
+
+          md_files = get_md_files()
+          total_nodes = len(md_files)
+
+          if total_nodes == 0:
+              print("Warning: No md files found in start/ directory")
+              total_nodes = 0
+
+          # 扫描当前文件状态
           nodes = {}
           first_time = None
           last_time = None
 
-          for i in range(1, 21):
-              fname = f"start/{i:02d}.md"
-              print(f"\n--- 检查 {fname} ---")
-              
-              if not os.path.exists(fname):
-                  print(f"文件不存在！")
-                  nodes[f"{i:02d}"] = {"status": "MISSING"}
-                  continue
-              
-              # 读取文件内容
-              with open(fname, 'r') as f:
-                  content = f.read().strip()
-              print(f"文件内容: '{content}'")
-              print(f"是否等于 WAITING: {content == 'WAITING'}")
-
-              # 尝试获取 git 历史
-              try:
-                  # 先检查 git log 是否能工作
-                  git_cmd = ['git', 'log', '-1', '--format=%at|%an', '--', fname]
-                  print(f"执行命令: {' '.join(git_cmd)}")
+          for node_id, filepath in md_files:
+              if os.path.exists(filepath):
+                  with open(filepath, 'r') as f:
+                      content = f.read().strip()
                   
-                  log = subprocess.check_output(git_cmd, text=True, stderr=subprocess.STDOUT).strip()
-                  print(f"Git 返回: '{log}'")
-                  
-                  if log and content != "WAITING":
-                      parts = log.split('|')
-                      if len(parts) >= 2:
-                          timestamp, author = parts[0], parts[1]
-                          try:
-                              ts = int(timestamp)
-                              time_str = datetime.fromtimestamp(ts).strftime('%H:%M:%S')
-                              
-                              if not first_time or ts < first_time:
-                                  first_time = ts
-                              if not last_time or ts > last_time:
-                                  last_time = ts
-                              
-                              nodes[f"{i:02d}"] = {
-                                  "status": "ONLINE",
-                                  "author": author,
-                                  "content": content[:20],  # 截断避免太长
-                                  "timestamp": ts,
-                                  "time_str": time_str
-                              }
-                              print(f"✅ 标记为 ONLINE: {author}")
-                          except ValueError as e:
-                              print(f"时间戳解析失败: {e}")
-                              nodes[f"{i:02d}"] = {"status": "WAITING"}
-                      else:
-                          print(f"Git 输出格式不正确")
-                          nodes[f"{i:02d}"] = {"status": "WAITING"}
-                  else:
-                      if not log:
-                          print(f"Git log 为空（文件未被修改过）")
-                      if content == "WAITING":
-                          print(f"内容仍是 WAITING")
-                      nodes[f"{i:02d}"] = {"status": "WAITING"}
+                  # 获取该文件的最后修改信息
+                  try:
+                      log = subprocess.check_output(
+                          ['git', 'log', '-1', '--format=%at|%an', '--', filepath],
+                          text=True
+                      ).strip()
                       
-              except subprocess.CalledProcessError as e:
-                  print(f"Git 命令失败: {e}")
-                  print(f"错误输出: {e.output}")
-                  nodes[f"{i:02d}"] = {"status": "ERROR"}
-              except Exception as e:
-                  print(f"未知错误: {e}")
-                  nodes[f"{i:02d}"] = {"status": "ERROR"}
+                      if log and content != "WAITING" and content != "":
+                          timestamp, author = log.split('|')
+                          ts = int(timestamp)
+                          time_str = datetime.fromtimestamp(ts).strftime('%H:%M:%S')
+                          
+                          if not first_time or ts < first_time:
+                              first_time = ts
+                          if not last_time or ts > last_time:
+                              last_time = ts
+                          
+                          nodes[node_id] = {
+                              "status": "ONLINE",
+                              "author": author,
+                              "content": content,
+                              "timestamp": ts,
+                              "time_str": time_str
+                          }
+                      else:
+                          nodes[node_id] = {"status": "WAITING"}
+                  except Exception as e:
+                      nodes[node_id] = {"status": "WAITING"}
+              else:
+                  nodes[node_id] = {"status": "MISSING"}
 
           # 计算耗时
           duration = last_time - first_time if (first_time and last_time) else 0
 
           status = {
-              "total": 20,
+              "total": total_nodes,
               "online": sum(1 for n in nodes.values() if n.get("status") == "ONLINE"),
               "nodes": nodes,
               "first_commit": datetime.fromtimestamp(first_time).strftime('%Y-%m-%d %H:%M:%S') if first_time else None,
@@ -120,22 +108,16 @@ jobs:
               "generated_at": datetime.now().isoformat()
           }
 
-          print(f"\n=== 最终结果: {status['online']}/20 online ===")
-
           with open('_site/status.json', 'w') as f:
               json.dump(status, f, indent=2)
-          print("已写入 _site/status.json")
+          
+          print(f"Status: {status['online']}/{total_nodes} online, Duration: {duration}s")
           PYTHON
-          
-          # 复制前端文件
-          cp docs/index.html _site/
+
+      - name: Copy frontend files
+        run: |
+          cp docs/*.html _site/
           cp -r start _site/ 2>/dev/null || true
-          
-          # 验证输出
-          echo "=== 验证生成的文件 ==="
-          ls -la _site/
-          echo "=== status.json 内容预览 ==="
-          cat _site/status.json | head -30
 
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v3
