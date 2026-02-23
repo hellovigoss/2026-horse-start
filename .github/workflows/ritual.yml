@@ -23,6 +23,11 @@ jobs:
         with:
           fetch-depth: 0  # 需要完整历史计算时间
 
+      - name: Set timezone to Asia/Shanghai
+        run: |
+          sudo timedatectl set-timezone Asia/Shanghai
+          echo "TZ=Asia/Shanghai" >> $GITHUB_ENV
+
       - name: Generate Status
         run: |
           mkdir -p _site
@@ -33,7 +38,10 @@ jobs:
           import json
           import subprocess
           import re
-          from datetime import datetime
+          from datetime import datetime, timezone, timedelta
+
+          # 设置东八区时区 (UTC+8)
+          tz = timezone(timedelta(hours=8))
 
           # 动态扫描 start 目录中的 md 文件
           def get_md_files():
@@ -74,7 +82,9 @@ jobs:
                       if log and content != "WAITING" and content != "":
                           timestamp, author = log.split('|')
                           ts = int(timestamp)
-                          time_str = datetime.fromtimestamp(ts).strftime('%H:%M:%S')
+                          # 使用东八区时间
+                          dt = datetime.fromtimestamp(ts, tz)
+                          time_str = dt.strftime('%H:%M:%S')
                           
                           if not first_time or ts < first_time:
                               first_time = ts
@@ -98,14 +108,15 @@ jobs:
           # 计算耗时
           duration = last_time - first_time if (first_time and last_time) else 0
 
+          # 使用东八区时间格式化
           status = {
               "total": total_nodes,
               "online": sum(1 for n in nodes.values() if n.get("status") == "ONLINE"),
               "nodes": nodes,
-              "first_commit": datetime.fromtimestamp(first_time).strftime('%Y-%m-%d %H:%M:%S') if first_time else None,
-              "last_commit": datetime.fromtimestamp(last_time).strftime('%Y-%m-%d %H:%M:%S') if last_time else None,
+              "first_commit": datetime.fromtimestamp(first_time, tz).strftime('%Y-%m-%d %H:%M:%S') if first_time else None,
+              "last_commit": datetime.fromtimestamp(last_time, tz).strftime('%Y-%m-%d %H:%M:%S') if last_time else None,
               "duration_seconds": duration,
-              "generated_at": datetime.now().isoformat()
+              "generated_at": datetime.now(tz).strftime('%Y-%m-%d %H:%M:%S')
           }
 
           with open('_site/status.json', 'w') as f:
